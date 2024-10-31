@@ -48,5 +48,5 @@ def send_message_with_length_prefix(socket, message):
         return False
 
 def signal_handler(received_signal, frame):
-   os.killpg(os.getpgid(0), signal.SIGINT)
+   os.kill(os.getpid(0), signal.SIGINT)
    sys.exit(0)

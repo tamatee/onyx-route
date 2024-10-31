@@ -1,13 +1,13 @@
 from Crypto.PublicKey import RSA
+from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto import Random
-from Crypto.Cipher import AES
 import socket
 import random
 import sys
 from termcolor import colored
-from socket_tool import *
-from padding_tool import *
-from packing_tool import *
+from .socket_tool import *
+from .padding_tool import *
+from .packing_tool import *
 
 def main():
    # กำหนดค่าคงที่
@@ -23,7 +23,7 @@ def main():
 
    # อ่าน private key
    try:
-       with open('..\private.pem', 'r') as da_file:
+       with open('C:\\Users\\FackG\\Desktop\\practical_source\\practical_project\\keys\\private.pem', 'r') as da_file:
            da_private = da_file.read()
        da_mykey = RSA.importKey(da_private)
    except FileNotFoundError:
@@ -45,7 +45,7 @@ def main():
 
    while True:
        try:
-           (clientsocket, addr) = s.accept()
+           clientsocket, addr = s.accept()
 
            # รับประเภทคำขอ
            request_type = clientsocket.recv(1).decode('utf-8')
@@ -54,7 +54,7 @@ def main():
                continue
 
            if request_type == 'n':  # relay node
-               msg = (clientsocket, RSA_KEY_SIZE+8)
+               msg = recvn(clientsocket, RSA_KEY_SIZE+8)
                if not msg:
                    clientsocket.close()
                    continue
@@ -84,7 +84,8 @@ def main():
                        continue
 
                    # ถอดรหัส AES key
-                   aes_key = da_mykey.decrypt(aes_enc)
+                   cipher = PKCS1_OAEP.new(da_mykey)
+                   aes_key = cipher.decrypt(aes_enc)
 
                    # ตรวจสอบว่ามี nodes เพียงพอ
                    if len(relay_nodes) < NUM_NODES-1 or len(exit_nodes) < 1:

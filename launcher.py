@@ -4,8 +4,9 @@ import signal
 import utils
 import random
 from termcolor import colored
-from utils import directory_authority, node, client, socket_tool
+from utils import client, directory_authority, node, socket_tool
 import sys
+import utils.socket_tool
 
 def run_directory_authority():
    directory_authority.main()
@@ -66,7 +67,7 @@ def main():
        sys.exit(1)
 
 if __name__ == "__main__":
-   signal.signal(signal.SIGINT, utils.signal_handler)
+   signal.signal(signal.SIGINT, utils.socket_tool.signal_handler)
    try:
        main()
    except KeyboardInterrupt:

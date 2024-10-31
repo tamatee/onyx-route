@@ -1,10 +1,12 @@
 from Crypto.PublicKey import RSA
-from Crypto.Cipher import AES
+from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto import Random
 import socket
 import threading
 import signal
-import socket_tool
+from .socket_tool import *
+from .packing_tool import *
+from .padding_tool import *
 from termcolor import colored
 
 def main(port=None, is_exit=False):
@@ -37,7 +39,7 @@ def main(port=None, is_exit=False):
            da_sock.send(b'n')
 
        # Send address and public key
-       addr = socket_tool.packHostPort(IP, port)
+       addr = packHostPort(IP, port)
        pub_key_bytes = public_key.exportKey()
        da_sock.send(addr + pub_key_bytes)
        da_sock.close()
@@ -63,13 +65,14 @@ def main(port=None, is_exit=False):
 def handle_connection(clientsocket, private_key, is_exit):
    try:
        # Receive initial setup message
-       message = socket_tool.recv_message_with_length_prefix(clientsocket)
+       message = recv_message_with_length_prefix(clientsocket)
        if not message:
            clientsocket.close()
            return
 
        # Decrypt the layer meant for this node
-       decrypted = private_key.decrypt(message)
+       cipher = PKCS1_OAEP.new(private_key)
+       decrypted = cipher.decrypt(message)
        
        # Parse the decrypted message
        next_addr = decrypted[:8]
@@ -80,9 +83,9 @@ def handle_connection(clientsocket, private_key, is_exit):
            # Relay node: Forward to next node
            try:
                next_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-               next_ip, next_port = socket_tool.unpackHostPort(next_addr)
+               next_ip, next_port = unpackHostPort(next_addr)
                next_sock.connect((next_ip, next_port))
-               socket_tool.send_message_with_length_prefix(next_sock, next_message)
+               send_message_with_length_prefix(next_sock, next_message)
                
                # Handle ongoing communication
                handle_relay_communication(clientsocket, next_sock, aes_key)
@@ -94,7 +97,7 @@ def handle_connection(clientsocket, private_key, is_exit):
            # Exit node: Connect to destination
            try:
                dest_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-               dest_ip, dest_port = socket_tool.unpackHostPort(next_addr)
+               dest_ip, dest_port = unpackHostPort(next_addr)
                dest_sock.connect((dest_ip, dest_port))
                
                # Handle communication with destination
@@ -113,7 +116,7 @@ def handle_relay_communication(prev_sock, next_sock, aes_key):
    while True:
        try:
            # Receive from previous node
-           message = socket_tool.recv_message_with_length_prefix(prev_sock)
+           message = recv_message_with_length_prefix(prev_sock)
            if not message:
                break
 
@@ -122,19 +125,19 @@ def handle_relay_communication(prev_sock, next_sock, aes_key):
            decrypted = aes.decrypt(message)
 
            # Forward to next node
-           socket_tool.send_message_with_length_prefix(next_sock, decrypted)
+           send_message_with_length_prefix(next_sock, decrypted)
 
            # Receive response from next node
-           response = socket_tool.recv_message_with_length_prefix(next_sock)
+           response = recv_message_with_length_prefix(next_sock)
            if not response:
                break
 
            # Encrypt response
            aes = AES.new(aes_key, AES.MODE_CBC, b"0" * 16)
-           encrypted = aes.encrypt(socket_tool.pad_message(response))
+           encrypted = aes.encrypt(pad_message(response))
 
            # Send back to previous node
-           socket_tool.send_message_with_length_prefix(prev_sock, encrypted)
+           send_message_with_length_prefix(prev_sock, encrypted)
 
        except Exception as e:
            print(colored(f"Relay communication error: {e}", 'red'))
@@ -144,7 +147,7 @@ def handle_exit_communication(prev_sock, dest_sock, aes_key):
    while True:
        try:
            # Receive from previous node
-           message = socket_tool.recv_message_with_length_prefix(prev_sock)
+           message = recv_message_with_length_prefix(prev_sock)
            if not message:
                break
 
@@ -153,24 +156,24 @@ def handle_exit_communication(prev_sock, dest_sock, aes_key):
            decrypted = aes.decrypt(message)
 
            # Remove padding and send to destination
-           socket_tool.send_message_with_length_prefix(dest_sock, decrypted.rstrip(b'\0'))
+           send_message_with_length_prefix(dest_sock, decrypted.rstrip(b'\0'))
 
            # Receive response from destination
-           response = socket_tool.recv_message_with_length_prefix(dest_sock)
+           response = recv_message_with_length_prefix(dest_sock)
            if not response:
                break
 
            # Encrypt response
            aes = AES.new(aes_key, AES.MODE_CBC, b"0" * 16)
-           encrypted = aes.encrypt(socket_tool.pad_message(response))
+           encrypted = aes.encrypt(pad_message(response))
 
            # Send back to previous node
-           socket_tool.send_message_with_length_prefix(prev_sock, encrypted)
+           send_message_with_length_prefix(prev_sock, encrypted)
 
        except Exception as e:
            print(colored(f"Exit communication error: {e}", 'red'))
            break
 
 if __name__ == "__main__":
-   signal.signal(signal.SIGINT, socket_tool.signal_handler)
+   signal.signal(signal.SIGINT, signal_handler)
    main()
