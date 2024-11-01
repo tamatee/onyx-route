@@ -19,8 +19,8 @@ def run_client():
 
 def main():
     # Configuration
-    num_relays = 5
-    num_exits = 2
+    num_relays = 3
+    num_exits = 1
     dir_auth_port = 12345
     # Start Directory Authority in a thread
     da_thread = threading.Thread(target=run_directory_authority)

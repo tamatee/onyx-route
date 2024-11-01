@@ -29,7 +29,7 @@ def main():
     
     # Initialize the socket
     dest_socket = sc.socket(sc.AF_INET, sc.SOCK_STREAM)
-    dest_ip = 'localhost'
+    dest_ip = '127.0.0.1'
     dest_port = 54321
     
     try:

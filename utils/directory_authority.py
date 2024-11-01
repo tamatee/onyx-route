@@ -1,5 +1,6 @@
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import AES, PKCS1_OAEP
+from Crypto import Random
 import socket
 import random
 import sys
@@ -76,19 +77,24 @@ def main():
                     if not aes_enc:
                         clientsocket.close()
                         continue
-
+            
                     cipher = PKCS1_OAEP.new(da_mykey)
-                    aes_key = cipher.decrypt(aes_enc)
-
+                    aes_key_and_nonce = cipher.decrypt(aes_enc)
+                    aes_key = aes_key_and_nonce[:32]  # AES key is 32 bytes
+                    nonce = aes_key_and_nonce[32:]  # Nonce is 16 bytes
+            
+                    if not nonce:
+                        raise ValueError("Nonce cannot be empty")
+            
                     if len(relay_nodes) < NUM_NODES-1 or len(exit_nodes) < 1:
                         print(colored("Error: Not enough nodes available", 'red'))
                         clientsocket.close()
                         continue
-
+            
                     # Select nodes for route
                     relay_list = random.sample(list(relay_nodes.items()), NUM_NODES-1)
                     exit = random.sample(list(exit_nodes.items()), 1)
-
+            
                     # Construct route
                     route_message = b""
                     for addr, key in relay_list:
@@ -96,14 +102,14 @@ def main():
                         route_message += key.export_key()
                     route_message += exit[0][0]
                     route_message += exit[0][1].export_key()
-
+            
                     # Encrypt and send route
-                    aes_obj = AES.new(aes_key, AES.MODE_CBC, b"0"*16)
-                    padded_message = pad_message(route_message)
-                    blob = aes_obj.encrypt(padded_message)
+                    aes_obj = AES.new(aes_key, AES.MODE_GCM, nonce=nonce)
+                    ciphertext, tag = aes_obj.encrypt_and_digest(route_message)
+                    blob = ciphertext + tag
                     send_message_with_length_prefix(clientsocket, blob)
                     print(colored("Sent route to client", 'green'))
-
+            
                 except Exception as e:
                     print(colored(f"Error processing route request: {e}", 'red'))
 

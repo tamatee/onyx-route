@@ -43,7 +43,6 @@ def sendn(socket, message):
         length = len(message)
         sent_end_index = 0
         while length > sent_end_index:
-            print(message)
             bytes_sent = socket.send(message[sent_end_index:])
             if bytes_sent == 0:
                 return 0
