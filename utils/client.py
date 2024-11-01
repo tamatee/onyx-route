@@ -24,7 +24,7 @@ def main():
         # เชื่อมต่อกับ directory authority
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect((DA_IP, DA_PORT))
-        s.send(b'r')  # ระบุประเภทคำขอ (route)    
+        s.send(b'r')  # ระบุประเภทคำขอ (route)
         # สร้างและส่ง AES key
         randfile = Random.new()
         aes_key = randfile.read(32)
@@ -59,49 +59,63 @@ def main():
        print(colored(f"Error occurred: {e}", 'red'))
 
 def run_client_connection(hoplist, destination):
+    """
+    Run the client connection with proper message handling
+    """
     try:
-        # เชื่อมต่อกับ node แรก
+        # Connect to first node
         next_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         next_host = (hoplist[len(hoplist) - 1][0], hoplist[len(hoplist) - 1][1])
         next_s.connect(next_host)
 
-
-        # สร้างและส่งข้อความเริ่มต้น
-        print(colored("debug_propertie", 'blue'))
-
+        # Create and send initial setup message
         wrapped_message, aes_key_list = wrap_all_messages(hoplist, destination)
-        send_message_with_length_prefix(next_s, wrapped_message)
+        if not send_message_with_length_prefix(next_s, wrapped_message):
+            print(colored("Failed to establish initial connection", 'red'))
+            return
+
         print(colored("\nConnection established through Tor network!", 'green'))
         print(colored("Type 'QUIT' to exit", 'yellow'))
+
         while True:
             try:
+                # Get user input
                 print(colored("\nCLIENT: Type message to send:", 'yellow'))
                 message = input()
-
+                
                 if message.upper() == 'QUIT':
                     print(colored("Closing connection...", 'red'))
                     break
-                # ส่งข้อความ
-                message = message.encode('utf-8')
-                message = add_all_layers(aes_key_list, message)
-                if not send_message_with_length_prefix(next_s, message):
+
+                # Prepare and send message
+                message_bytes = message.encode('utf-8')
+                encrypted_message = add_all_layers(aes_key_list, message_bytes)
+                
+                if not send_message_with_length_prefix(next_s, encrypted_message):
                     print(colored("Failed to send message", 'red'))
                     break
-
-                # รับการตอบกลับ
+                
+                # Receive and process response
                 response = recv_message_with_length_prefix(next_s)
                 if not response:
                     print(colored("No response received", 'red'))
                     break
-
-                response = peel_all_layers(aes_key_list, response)
-                print(colored("\nCLIENT: Response from server:", 'red'))
-                print(colored(response.decode('utf-8'), 'red'))
+                
+                # Decrypt all layers
+                try:
+                    decrypted_response = peel_all_layers(aes_key_list, response)
+                    # Try to decode the response as UTF-8
+                    decoded_response = decrypted_response.rstrip(b'\0').decode('utf-8')
+                    print(colored("\nCLIENT: Response from server:", 'green'))
+                    print(colored(decoded_response, 'blue'))
+                except UnicodeDecodeError:
+                    # If decoding fails, show hex representation
+                    print(colored("\nCLIENT: Received binary response:", 'red'))
+                    print(colored(decrypted_response.hex(), 'red'))
 
             except socket.error as e:
                 print(colored("\nConnection lost!", 'red'))
                 break
-
             except Exception as e:
                 print(colored(f"\nError: {e}", 'red'))
                 break

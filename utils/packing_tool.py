@@ -3,7 +3,6 @@ import socket
 from Crypto.PublicKey import RSA
 
 def packHostPort(ip, port):
-    print(socket.inet_aton(ip) + struct.pack("!i", port))
     return socket.inet_aton(ip) + struct.pack("!i", port)
 
 def unpackHostPort(packed):

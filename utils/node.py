@@ -140,66 +140,136 @@ def handle_connection(clientsocket, private_key, is_exit):
 
 
 def handle_relay_communication(prev_sock, next_sock, aes_key):
-    """Handle ongoing communication for relay nodes with proper padding"""
+    """Handle ongoing communication for relay nodes with decryption debugging"""
     while True:
         try:
             # Receive from previous node
             message = recv_message_with_length_prefix(prev_sock)
             if not message:
+                print(colored("Connection closed by previous node", 'red'))
                 break
 
             # Decrypt one layer
-            aes = AES.new(aes_key, AES.MODE_CBC, b"0" * 16)
-            decrypted = aes.decrypt(message)
-            decrypted = unpad_message(decrypted)  # Remove padding
+            try:
+                aes = AES.new(aes_key, AES.MODE_CBC, b"0" * 16)
+                decrypted = aes.decrypt(message)
+                try:
+                    decrypted = unpad(decrypted, AES.block_size)
+                except ValueError:
+                    # If unpadding fails, just remove null bytes
+                    decrypted = decrypted.rstrip(b'\0')
 
-            # Forward to next node
-            send_message_with_length_prefix(next_sock, decrypted)
+                print(colored("\nRelay node forwarding message", 'green'))
 
-            # Receive response
-            response = recv_message_with_length_prefix(next_sock)
-            if not response:
+            except Exception as e:
+                print(colored(f"Relay decryption error: {e}", 'red'))
                 break
 
-            # Encrypt and pad response
-            padded_response = pad_message(response)
-            aes = AES.new(aes_key, AES.MODE_CBC, b"0" * 16)
-            encrypted = aes.encrypt(padded_response)
+            # Forward to next node
+            if not send_message_with_length_prefix(next_sock, decrypted):
+                print(colored("Failed to forward message", 'red'))
+                break
 
-            send_message_with_length_prefix(prev_sock, encrypted)
+            # Receive response from next node
+            response = recv_message_with_length_prefix(next_sock)
+            if not response:
+                print(colored("No response from next node", 'red'))
+                break
+
+            # Encrypt response
+            try:
+                padded_response = pad(response, AES.block_size)
+                aes = AES.new(aes_key, AES.MODE_CBC, b"0" * 16)
+                encrypted = aes.encrypt(padded_response)
+                print(colored("Relay node forwarding response", 'green'))
+
+            except Exception as e:
+                print(colored(f"Relay encryption error: {e}", 'red'))
+                break
+
+            # Send back to previous node
+            if not send_message_with_length_prefix(prev_sock, encrypted):
+                print(colored("Failed to send response", 'red'))
+                break
 
         except Exception as e:
             print(colored(f"Relay communication error: {e}", 'red'))
             break
 
 def handle_exit_communication(prev_sock, dest_sock, aes_key):
-    """Handle ongoing communication for exit nodes with proper padding"""
+    """
+    Handle communication for exit nodes with proper decryption
+    
+    Args:
+        prev_sock: Socket connected to previous node
+        dest_sock: Socket connected to destination
+        aes_key: AES key for this node
+    """
     while True:
         try:
-            # Receive from previous node
-            message = recv_message_with_length_prefix(prev_sock)
-            if not message:
+            # Receive encrypted message from previous node
+            encrypted_message = recv_message_with_length_prefix(prev_sock)
+            if not encrypted_message:
+                print(colored("Connection closed by previous node", 'red'))
                 break
 
-            # Decrypt final layer
-            aes = AES.new(aes_key, AES.MODE_CBC, b"0" * 16)
-            decrypted = aes.decrypt(message)
-            decrypted = unpad_message(decrypted)  # Remove padding
+            # Decrypt the final layer
+            try:
+                # Create AES cipher
+                aes = AES.new(aes_key, AES.MODE_CBC, b"0" * 16)
+                # Decrypt the message
+                decrypted = aes.decrypt(encrypted_message)
+                # Remove padding
+                try:
+                    final_message = unpad(decrypted, AES.block_size)
+                except ValueError:
+                    # If unpadding fails, just remove null bytes
+                    final_message = decrypted.rstrip(b'\0')
 
-            # Send to destination
-            send_message_with_length_prefix(dest_sock, decrypted)
+                print(colored("\nExit node decrypted message:", 'green'))
+                try:
+                    print(colored(f"Content: {final_message.decode('utf-8')}", 'yellow'))
+                except UnicodeDecodeError:
+                    print(colored(f"Binary content: {final_message.hex()}", 'yellow'))
 
-            # Receive response
+            except Exception as e:
+                print(colored(f"Decryption error: {e}", 'red'))
+                continue
+
+            # Forward decrypted message to destination
+            if not send_message_with_length_prefix(dest_sock, final_message):
+                print(colored("Failed to forward message to destination", 'red'))
+                break
+
+            # Receive response from destination
             response = recv_message_with_length_prefix(dest_sock)
             if not response:
+                print(colored("No response from destination", 'red'))
                 break
 
-            # Encrypt and pad response
-            padded_response = pad_message(response)
-            aes = AES.new(aes_key, AES.MODE_CBC, b"0" * 16)
-            encrypted = aes.encrypt(padded_response)
+            # Encrypt response for previous node
+            try:
+                # Pad the response
+                padded_response = pad(response, AES.block_size)
+                # Create new AES cipher for encryption
+                aes = AES.new(aes_key, AES.MODE_CBC, b"0" * 16)
+                # Encrypt the padded response
+                encrypted_response = aes.encrypt(padded_response)
 
-            send_message_with_length_prefix(prev_sock, encrypted)
+                print(colored("\nExit node encrypted response:", 'green'))
+                try:
+                    print(colored(f"Original content: {response.decode('utf-8')}", 'yellow'))
+                except UnicodeDecodeError:
+                    print(colored(f"Original binary content: {response.hex()}", 'yellow'))
+
+            except Exception as e:
+                print(colored(f"Encryption error: {e}", 'red'))
+                continue
+
+            # Send encrypted response back
+            if not send_message_with_length_prefix(prev_sock, encrypted_response):
+                print(colored("Failed to send response to previous node", 'red'))
+                break
 
         except Exception as e:
             print(colored(f"Exit communication error: {e}", 'red'))

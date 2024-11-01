@@ -21,16 +21,16 @@ def main():
     # Configuration
     num_relays = 3
     num_exits = 2
-    dir_auth_port = 12345   
+    dir_auth_port = 12345
     # Start Directory Authority in a thread
     da_thread = threading.Thread(target=run_directory_authority)
     da_thread.daemon = True
     da_thread.start()
     print(colored("Started Directory Authority...", 'green'))
-    time.sleep(1)  # รอให้ DA พร้อม   
+    time.sleep(1)  # รอให้ DA พร้อม
     # Start Relay Nodes
     port_range = list(range(7000, 9000))
-    ports = random.sample(port_range, num_relays + num_exits)   
+    ports = random.sample(port_range, num_relays + num_exits)
     relay_threads = []
     # Start relay nodes
     for port in ports[:num_relays]:

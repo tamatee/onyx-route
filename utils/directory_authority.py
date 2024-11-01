@@ -1,6 +1,5 @@
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import AES, PKCS1_OAEP
-from Crypto import Random
 import socket
 import random
 import sys
@@ -10,7 +9,6 @@ from .padding_tool import *
 from .packing_tool import *
 
 def main():
-    RSA_KEY_SIZE = 2048  # Change this to match our key size
     NUM_NODES = 3
     DA_IP = "127.0.0.1"
     DA_PORT = 12345
