@@ -1,6 +1,6 @@
 import struct
 import socket
-from Crypto.PublicKey import RSA
+from Crypto.PublicKey import ECC
 
 def packHostPort(ip, port):
     return socket.inet_aton(ip) + struct.pack("!i", port)
@@ -24,7 +24,9 @@ def process_route(data):
         while current_pos < len(data):
             # Extract address (8 bytes)
             if current_pos + 8 > len(data):
+                print(f"Insufficient data for address at position {current_pos}")
                 break
+                
             addr = data[current_pos:current_pos + 8]
             current_pos += 8
             
@@ -34,23 +36,27 @@ def process_route(data):
             
             key_start = data.find(begin_key, current_pos)
             if key_start == -1:
+                print("Could not find start of public key")
                 break
                 
             key_end = data.find(end_key, key_start)
             if key_end == -1:
+                print("Could not find end of public key")
                 break
                 
             # Extract the complete key including boundaries
             key_data = data[key_start:key_end + len(end_key)]
             
-            # Import the key
+            # Import the key using ECC instead of RSA
             try:
-                public_key = RSA.import_key(key_data)
                 host, port = unpackHostPort(addr)
+                public_key = ECC.import_key(key_data)
                 nodes.append((host, port, public_key))
+                print(f"Successfully processed node at {host}:{port}")
                 current_pos = key_end + len(end_key)
             except Exception as e:
                 print(f"Error importing key: {e}")
+                print(f"Key data preview: {key_data[:50]}...")
                 break
                 
         return nodes

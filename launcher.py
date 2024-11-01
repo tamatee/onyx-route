@@ -29,7 +29,7 @@ def main():
     print(colored("Started Directory Authority...", 'green'))
     time.sleep(1)  # รอให้ DA พร้อม
     # Start Relay Nodes
-    port_range = list(range(7000, 9000))
+    port_range = list(range(7000, 7010))
     ports = random.sample(port_range, num_relays + num_exits)
     relay_threads = []
     # Start relay nodes
