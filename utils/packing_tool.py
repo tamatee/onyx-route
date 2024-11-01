@@ -1,28 +1,61 @@
 import struct
 import socket
-from .encryption_tool import wrap_message
 from Crypto.PublicKey import RSA
 
 def packHostPort(ip, port):
+    print(socket.inet_aton(ip) + struct.pack("!i", port))
     return socket.inet_aton(ip) + struct.pack("!i", port)
 
 def unpackHostPort(packed):
     return (socket.inet_ntoa(packed[:4]), struct.unpack("!i", packed[4:])[0])
 
-def packRoute(hoplist):
-    message = ""
-    for i in range(0, len(hoplist)):
-        idx = len(hoplist) - 1 - i
-        message = hoplist[idx][0] + message
-        message = wrap_message(message, hoplist[idx][1])
-    return message
-
 def process_route(data):
-
-    hoplist = []
-    for a in range(3):
-        rsa_key = data[8:220]
-        hostport = unpackHostPort(data[:8])
-        hoplist.append((hostport[0], hostport[1], RSA.importKey(rsa_key)))
-        data = data[220:]
-    return hoplist
+    """Process route data from Directory Authority and extract node information.
+    
+    Args:
+        data: Decrypted route data from Directory Authority
+        
+    Returns:
+        List of tuples containing (host, port, public_key) for each node
+    """
+    try:
+        nodes = []
+        current_pos = 0
+        
+        while current_pos < len(data):
+            # Extract address (8 bytes)
+            if current_pos + 8 > len(data):
+                break
+            addr = data[current_pos:current_pos + 8]
+            current_pos += 8
+            
+            # Find the PEM boundaries
+            begin_key = b"-----BEGIN PUBLIC KEY-----\n"
+            end_key = b"-----END PUBLIC KEY-----"
+            
+            key_start = data.find(begin_key, current_pos)
+            if key_start == -1:
+                break
+                
+            key_end = data.find(end_key, key_start)
+            if key_end == -1:
+                break
+                
+            # Extract the complete key including boundaries
+            key_data = data[key_start:key_end + len(end_key)]
+            
+            # Import the key
+            try:
+                public_key = RSA.import_key(key_data)
+                host, port = unpackHostPort(addr)
+                nodes.append((host, port, public_key))
+                current_pos = key_end + len(end_key)
+            except Exception as e:
+                print(f"Error importing key: {e}")
+                break
+                
+        return nodes
+        
+    except Exception as e:
+        print(f"Error processing route: {e}")
+        return []

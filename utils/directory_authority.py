@@ -10,116 +10,109 @@ from .padding_tool import *
 from .packing_tool import *
 
 def main():
-   # กำหนดค่าคงที่
-   RSA_KEY_SIZE = 212
-   NUM_NODES = 3
-   DA_IP = "127.0.0.1"
-   DA_PORT = 12345
+    RSA_KEY_SIZE = 2048  # Change this to match our key size
+    NUM_NODES = 3
+    DA_IP = "127.0.0.1"
+    DA_PORT = 12345
 
-   relay_nodes = {}  # เก็บ relay nodes
-   exit_nodes = {}   # เก็บ exit nodes
+    relay_nodes = {}
+    exit_nodes = {}
 
-   randfile = Random.new()
+    try:
+        # Read private key
+        with open('keys/private.pem', 'rb') as f:
+            da_mykey = RSA.import_key(f.read())
 
-   # อ่าน private key
-   try:
-       with open('C:\\Users\\FackG\\Desktop\\practical_source\\practical_project\\keys\\private.pem', 'r') as da_file:
-           da_private = da_file.read()
-       da_mykey = RSA.importKey(da_private)
-   except FileNotFoundError:
-       print(colored("Error: Private key file not found", 'red'))
-       return
-   except Exception as e:
-       print(colored(f"Error loading private key: {e}", 'red'))
-       return
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind((DA_IP, DA_PORT))
+        s.listen(5)
+        print(colored(f"Directory Authority listening on {DA_IP}:{DA_PORT}", 'green'))
 
-   # สร้าง socket และ bind
-   try:
-       s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-       s.bind((DA_IP, DA_PORT))
-       s.listen(5)
-       print(colored(f"Directory Authority listening on {DA_IP}:{DA_PORT}", 'green'))
-   except Exception as e:
-       print(colored(f"Socket error: {e}", 'red'))
-       return
+        while True:
+            (clientsocket, addr) = s.accept()
+            request_type = clientsocket.recv(1)
+            
+            if request_type == b'n':  # relay node
+                data = recvn(clientsocket, 8)  # Address
+                if not data:
+                    clientsocket.close()
+                    continue
+                node_addr = data
+                
+                data = recv_message_with_length_prefix(clientsocket)  # Public key
+                if not data:
+                    clientsocket.close()
+                    continue
+                    
+                try:
+                    key = RSA.import_key(data)
+                    relay_nodes[node_addr] = key
+                    port = unpackHostPort(node_addr)[1]
+                    print(colored(f"Registered relay node on port {port}", 'green'))
+                except Exception as e:
+                    print(f"Error importing relay node key: {e}")
+                    
+            elif request_type == b'e':  # exit node
+                data = recvn(clientsocket, 8)  # Address
+                if not data:
+                    clientsocket.close()
+                    continue
+                node_addr = data
+                
+                data = recv_message_with_length_prefix(clientsocket)  # Public key
+                if not data:
+                    clientsocket.close()
+                    continue
+                    
+                try:
+                    key = RSA.import_key(data)
+                    exit_nodes[node_addr] = key
+                    port = unpackHostPort(node_addr)[1]
+                    print(colored(f"Registered exit node on port {port}", 'green'))
+                except Exception as e:
+                    print(f"Error importing exit node key: {e}")
 
-   while True:
-       try:
-           clientsocket, addr = s.accept()
+            elif request_type == b'r':  # route request
+                try:
+                    aes_enc = recv_message_with_length_prefix(clientsocket)
+                    if not aes_enc:
+                        clientsocket.close()
+                        continue
 
-           # รับประเภทคำขอ
-           request_type = clientsocket.recv(1).decode('utf-8')
-           if not request_type:
-               clientsocket.close()
-               continue
+                    cipher = PKCS1_OAEP.new(da_mykey)
+                    aes_key = cipher.decrypt(aes_enc)
 
-           if request_type == 'n':  # relay node
-               msg = recvn(clientsocket, RSA_KEY_SIZE+8)
-               if not msg:
-                   clientsocket.close()
-                   continue
-               node_addr = msg[:8]
-               key = msg[8:]
-               relay_nodes[node_addr] = key
-               port = unpackHostPort(node_addr)[1]
-               print(colored(f"Registered relay node on port {port}", 'green'))
+                    if len(relay_nodes) < NUM_NODES-1 or len(exit_nodes) < 1:
+                        print(colored("Error: Not enough nodes available", 'red'))
+                        clientsocket.close()
+                        continue
 
-           elif request_type == 'e':  # exit node
-               msg = recvn(clientsocket, RSA_KEY_SIZE+8)
-               if not msg:
-                   clientsocket.close()
-                   continue
-               node_addr = msg[:8]
-               key = msg[8:]
-               exit_nodes[node_addr] = key
-               port = unpackHostPort(node_addr)[1]
-               print(colored(f"Registered exit node on port {port}", 'green'))
+                    # Select nodes for route
+                    relay_list = random.sample(list(relay_nodes.items()), NUM_NODES-1)
+                    exit = random.sample(list(exit_nodes.items()), 1)
 
-           elif request_type == 'r':  # route request
-               try:
-                   # รับ encrypted aes key จาก client
-                   aes_enc = recv_message_with_length_prefix(clientsocket)
-                   if not aes_enc:
-                       clientsocket.close()
-                       continue
+                    # Construct route
+                    route_message = b""
+                    for addr, key in relay_list:
+                        route_message += addr
+                        route_message += key.export_key()
+                    route_message += exit[0][0]
+                    route_message += exit[0][1].export_key()
 
-                   # ถอดรหัส AES key
-                   cipher = PKCS1_OAEP.new(da_mykey)
-                   aes_key = cipher.decrypt(aes_enc)
+                    # Encrypt and send route
+                    aes_obj = AES.new(aes_key, AES.MODE_CBC, b"0"*16)
+                    padded_message = pad_message(route_message)
+                    blob = aes_obj.encrypt(padded_message)
+                    send_message_with_length_prefix(clientsocket, blob)
+                    print(colored("Sent route to client", 'green'))
 
-                   # ตรวจสอบว่ามี nodes เพียงพอ
-                   if len(relay_nodes) < NUM_NODES-1 or len(exit_nodes) < 1:
-                       print(colored("Error: Not enough nodes available", 'red'))
-                       clientsocket.close()
-                       continue
+                except Exception as e:
+                    print(colored(f"Error processing route request: {e}", 'red'))
 
-                   # สุ่มเลือก nodes
-                   relay_list = random.sample(list(relay_nodes.items()), NUM_NODES-1)
-                   exit = random.sample(list(exit_nodes.items()), 1)
+            clientsocket.close()
 
-                   # สร้างเส้นทาง
-                   route_message = construct_route(relay_list, exit)
-
-                   # เข้ารหัสและส่งเส้นทาง
-                   aes_obj = AES.new(aes_key, AES.MODE_CBC, b"0"*16)
-                   blob = aes_obj.encrypt(pad_message(route_message))
-                   send_message_with_length_prefix(clientsocket, blob)
-
-                   print(colored("Sent route to client", 'green'))
-
-               except Exception as e:
-                   print(colored(f"Error processing route request: {e}", 'red'))
-
-           else:
-               print(colored(f"Unknown request type: {request_type}", 'yellow'))
-
-       except Exception as e:
-           print(colored(f"Error handling client: {e}", 'red'))
-       finally:
-           try:
-               clientsocket.close()
-           except:
-               pass
+    except Exception as e:
+        print(colored(f"Fatal error: {e}", 'red'))
 
 def construct_route(relays, exit):
    """สร้างข้อความเส้นทางจาก relay nodes และ exit node"""

@@ -37,16 +37,16 @@ while True:
         if revmessage == "QUIT":
             try:
                 clientsocket.shutdown(sc.SHUT_RDWR)
-                socket.shutdown(sc.SHUT_RDWR)
-            except socket.error as e:
+                sc.shutdown(sc.SHUT_RDWR)
+            except sc.error as e:
                 pass
             sys.exit(0)
         bytessent = send_message_with_length_prefix(clientsocket, revmessage.encode('utf-8'))
         if bytessent == 0:
             try:
-                clientsocket.shutdown(socket.SHUT_RDWR)
-                dest_socket.shutdown(socket.SHUT_RDWR)
-            except socket.error as e:
+                clientsocket.shutdown(sc.SHUT_RDWR)
+                dest_socket.shutdown(sc.SHUT_RDWR)
+            except sc.error as e:
                 pass
             print(colored("\n\nLost connection to client. Closing...\n", "red"))
     except Exception as e:

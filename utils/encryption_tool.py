@@ -14,52 +14,112 @@ def add_layer(message, aes_key):
     return ciphertext
 
 def add_all_layers(aes_key_list, message):
-    message = pad_message(message)
-    for key in aes_key_list:
-        message = add_layer(message, key)
-    return message
+    """
+    Add all encryption layers to a message using the AES keys.
+    
+    Args:
+        aes_key_list (list): List of AES keys
+        message (bytes): Original message
+        
+    Returns:
+        bytes: Encrypted message
+    """
+    if isinstance(message, str):
+        message = message.encode('utf-8')
+    
+    result = pad_message(message)
+    
+    # Apply encryption layers in reverse order
+    for key in reversed(aes_key_list):
+        aes = AES.new(key, AES.MODE_CBC, b"0" * 16)
+        result = aes.encrypt(pad_message(result))
+    
+    return result
 
 def peel_layer(ciphertext, aes_key):
     aes_obj = AES.new(aes_key, AES.MODE_CBC, b"0" * 16)
     message = aes_obj.decrypt(ciphertext)
     return message
 
-def peel_all_layers(aes_key_list, response):
-    for i in reversed(range(0, len(aes_key_list))):
-        response = peel_layer(response, aes_key_list[i])
-    response = unpad_message(response)
-    return response
+def peel_all_layers(aes_key_list, message):
+    """
+    Remove all encryption layers from a message using the AES keys.
+    
+    Args:
+        aes_key_list (list): List of AES keys
+        message (bytes): Encrypted message
+        
+    Returns:
+        bytes: Decrypted message
+    """
+    result = message
+    
+    # Remove encryption layers in forward order
+    for key in aes_key_list:
+        aes = AES.new(key, AES.MODE_CBC, b"0" * 16)
+        result = aes.decrypt(result)
+    
+    # Remove padding from final result
+    return result.rstrip(b'\0')
 
-def wrap_message(message, rsa_key, aes_key):
-    aes_obj = AES.new(aes_key, AES.MODE_CBC, b"0" * 16)
+def wrap_message(message, public_key, aes_key):
+    """
+    Wrap a message layer with encryption for a single hop.
+    
+    Args:
+        message (bytes): The message to wrap
+        public_key (RSA.RsaKey): Public key of the target node
+        aes_key (bytes): AES key for symmetric encryption
+        
+    Returns:
+        bytes: Wrapped message
+    """
+    # Ensure message is bytes
     if isinstance(message, str):
         message = message.encode('utf-8')
-    # Make sure message length is multiple of 16 for AES
-    padded_message = pad_message(message)
-    ciphertext_aes = aes_obj.encrypt(padded_message)
     
-    # Use PKCS1_OAEP for RSA encryption
-    cipher = PKCS1_OAEP.new(rsa_key)
-    ciphertext_rsa = cipher.encrypt(aes_key)
+    # Create AES cipher
+    aes = AES.new(aes_key, AES.MODE_CBC, b"0" * 16)
     
-    # Combine RSA-encrypted AES key with AES-encrypted message
-    blob = ciphertext_rsa + ciphertext_aes
-    return blob
+    # Encrypt message with AES
+    cipher_text = aes.encrypt(message)
+    
+    # Encrypt AES key with RSA
+    rsa_cipher = PKCS1_OAEP.new(public_key)
+    encrypted_aes_key = rsa_cipher.encrypt(aes_key)
+    
+    # Combine encrypted key and message
+    return encrypted_aes_key + cipher_text
 
 def wrap_all_messages(hoplist, destination):
+    """
+    Wrap message for all hops in the route.
+    
+    Args:
+        hoplist (list): List of tuples containing (host, port, public_key) for each hop
+        destination (bytes): Packed destination address
+        
+    Returns:
+        tuple: (wrapped_message, aes_key_list)
+    """
     randfile = Random.new()
-    wrapped_message = destination
+    wrapped_message = destination  # Should already be bytes from packHostPort
     aes_key_list = []
-    packedroute = ""
-    for i in range(0, len(hoplist)):
-        # have some way of getting each, probably from directory authority
+    
+    for i in range(len(hoplist)):
+        # Generate AES key for this hop
         elem_aes_key = randfile.read(32)
         aes_key_list.append(elem_aes_key)
+        
+        # Get packed route for previous hop (if not first hop)
         if i != 0:
-            packedroute = packHostPort(hoplist[i - 1][0], hoplist[i - 1][1])
-        wrapped_message = packedroute + wrapped_message
-        wrapped_message = wrap_message(
-            pad_message(wrapped_message), hoplist[i][2], elem_aes_key)
+            packed_route = packHostPort(hoplist[i - 1][0], hoplist[i - 1][1])
+            wrapped_message = packed_route + wrapped_message
+        
+        # Pad and wrap the message
+        padded_message = pad_message(wrapped_message)
+        wrapped_message = wrap_message(padded_message, hoplist[i][2], elem_aes_key)
+    
     return wrapped_message, aes_key_list
 
 

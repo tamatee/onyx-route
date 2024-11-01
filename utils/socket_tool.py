@@ -25,27 +25,31 @@ def recv_message_with_length_prefix(socket):
     message = recvn(socket, message_length)
     return message
 
-def sendn(socket, message):
-    length = len(message)
-    sent_end_index = 0
-    while length > sent_end_index:
-        bytes_sent = socket.send(message[sent_end_index:])
-        if bytes_sent == 0:
-            return 0
-        sent_end_index += bytes_sent
-    return length
-
 def send_message_with_length_prefix(socket, message):
-    prefix = struct.pack('!I', len(message))
-    # 4 bytes, should send all of it
-    #send prefix
-    byte_sent = sendn(socket, prefix)
-    if byte_sent == 0:
+    try:
+        prefix = struct.pack('!I', len(message))
+        # Send prefix (4 bytes)
+        if sendn(socket, prefix) == 0:
+            return False
+        # Send message
+        if sendn(socket, message) == 0:
+            return False
+        return True
+    except:
         return False
-    #send message
-    byte_sent = sendn(socket, message)
-    if byte_sent == 0:
-        return False
+
+def sendn(socket, message):
+    try:
+        length = len(message)
+        sent_end_index = 0
+        while length > sent_end_index:
+            bytes_sent = socket.send(message[sent_end_index:])
+            if bytes_sent == 0:
+                return 0
+            sent_end_index += bytes_sent
+        return length
+    except:
+        return 0
 
 def signal_handler(received_signal, frame):
    os.kill(os.getpid(0), signal.SIGINT)
