@@ -6,6 +6,7 @@ from .socket_tool import *
 from .padding_tool import *
 from .packing_tool import *
 from .encryption_tool import *
+from .timing_tool import *
 import socket
 import sys
 from termcolor import colored
@@ -38,7 +39,7 @@ def main():
         if not send_message_with_length_prefix(s, aes_msg):
             s.close()
             print(colored("Directory authority connection failed", 'red'))
-            return 
+            return
 
         # Receive route data
         data = recv_message_with_length_prefix(s)
@@ -65,18 +66,25 @@ def run_client_connection(hoplist, destination):
     """
     Run client connection with correct encryption order
     """
+    timer = ProcessTimer()
     try:
+        # Start timer
+        timer.start_process("Initial Connection")
+
         # Connect to first node
         next_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         next_host = (hoplist[len(hoplist) - 1][0], hoplist[len(hoplist) - 1][1])
         next_s.connect(next_host)
 
-        # Create and send initial setup message
+        # Create and s end initial setup message
+        timer.mark_timestamp("Creating initial setup message")
         wrapped_message, aes_key_list, nonce_list = wrap_all_messages(hoplist, destination)
+
         if not send_message_with_length_prefix(next_s, wrapped_message):
             print(colored("Failed to establish initial connection", 'red'))
             return
 
+        timer.end_process("Initial Connection")
         print(colored("\nConnection established through Tor network!", 'green'))
         print(colored("Type 'QUIT' to exit", 'yellow'))
 
@@ -89,6 +97,9 @@ def run_client_connection(hoplist, destination):
                     print(colored("Closing connection...", 'red'))
                     break
 
+                # Time message processing
+                timer.start_process("Message Processing")
+
                 # Debug info - show encryption parameters in network order
                 print(colored("\nDEBUG: Encryption parameters (in network order):", 'blue'))
                 for i in range(len(hoplist)):
@@ -96,6 +107,8 @@ def run_client_connection(hoplist, destination):
                     nonce_hash = hashlib.sha256(nonce_list[i]).hexdigest()[:8]
                     print(colored(f"Hop {i}: Key: {key_hash}, Nonce: {nonce_hash}", 'blue'))
 
+                # Encryption timing
+                timer.start_process("Encryption")
                 # Prepare message
                 message_bytes = message.encode('utf-8')
                 current_message = message_bytes
@@ -107,17 +120,24 @@ def run_client_connection(hoplist, destination):
                     aes = AES.new(key, AES.MODE_GCM, nonce=nonce)
                     current_message, tag = aes.encrypt_and_digest(current_message)
                     current_message += tag
-                    
+
                     key_hash = hashlib.sha256(key).hexdigest()[:8]
                     nonce_hash = hashlib.sha256(nonce).hexdigest()[:8]
                     print(colored(f"Layer {i} encrypted with Key: {key_hash}, Nonce: {nonce_hash}", 'blue'))
                     print(colored(f"Message length after layer {i}: {len(current_message)}", 'blue'))
 
+                timer.end_process("Encryption")
+
+                # Send timing
+                timer.start_process("Message Transmission")
                 if not send_message_with_length_prefix(next_s, current_message):
                     print(colored("Failed to send message", 'red'))
                     break
                 print(colored("DEBUG: Message sent successfully", 'green'))
+                timer.end_process("Message Transmission")
 
+                # Decryption timing
+                timer.start_process("Decryption")
                 # Receive response
                 response = recv_message_with_length_prefix(next_s)
                 if not response:
@@ -140,18 +160,27 @@ def run_client_connection(hoplist, destination):
                         key_hash = hashlib.sha256(key).hexdigest()[:8]
                         print(colored(f"Decrypted layer {i} with Key: {key_hash}", 'blue'))
 
+                    timer.end_process("Decryption")
+                    timer.end_process("Message Processing")
+
+                    # Print timing summary
+                    print(timer.get_summary())
+                    timer.reset()
                     # Display the final decrypted response
                     print(colored("\nCLIENT: Response from server:", 'green'))
                     print(colored(current_response.decode('utf-8'), 'blue'))
 
                 except Exception as e:
                     print(colored(f"\nDecryption error: {e}", 'red'))
+                    timer.mark_timestamp(f"Decryption error: {e}")
 
             except socket.error as e:
                 print(colored("\nConnection lost!", 'red'))
+                timer.mark_timestamp(f"Error: {e}")
                 break
             except Exception as e:
                 print(colored(f"\nError: {e}", 'red'))
+                timer.mark_timestamp(f"Error: {e}")
                 break
 
     except socket.error as e:

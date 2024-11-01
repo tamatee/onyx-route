@@ -120,39 +120,43 @@ class EncryptionBenchmark:
 
     def run_comparison(self, data_sizes=None):
         if data_sizes is None:
-            data_sizes = [64, 256, 1024, 4096, 16384, 65536, 262144, 1048576]  # Data sizes in bytes
-        
+            # Data sizes up to 64 MB
+            data_sizes = [
+                64, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 
+                2097152, 4194304, 8388608, 16777216, 33554432, 67108864
+            ]  # Data sizes in bytes
+    
         results = {
             'AES-CBC': [],
             'AES-CTR': [],
             'AES-GCM': [],
             'ChaCha20-Poly1305': []
         }
-        
+    
         for size in data_sizes:
             data = os.urandom(size)  # Generate random data of the specified size
             print(f"\nTesting with {size} bytes of data:")
-            
+    
             # Benchmark AES-CBC
             mean_time, std_time = self.benchmark_aes_cbc(data)
             results['AES-CBC'].append(mean_time * 1000)  # Convert to milliseconds
             print(f"AES-CBC: {mean_time * 1000:.10f} ms (± {std_time * 1000:.10f})")
-            
+    
             # Benchmark AES-CTR
             mean_time, std_time = self.benchmark_aes_ctr(data)
             results['AES-CTR'].append(mean_time * 1000)  # Convert to milliseconds
             print(f"AES-CTR: {mean_time * 1000:.10f} ms (± {std_time * 1000:.10f})")
-
+    
             # Benchmark AES-GCM
             mean_time, std_time = self.benchmark_aes_gcm(data)
             results['AES-GCM'].append(mean_time * 1000)  # Convert to milliseconds
             print(f"AES-GCM: {mean_time * 1000:.10f} ms (± {std_time * 1000:.10f})")
-            
+    
             # Benchmark ChaCha20-Poly1305
             mean_time, std_time = self.benchmark_chacha20(data)
             results['ChaCha20-Poly1305'].append(mean_time * 1000)  # Convert to milliseconds
             print(f"ChaCha20-Poly1305: {mean_time * 1000:.10f} ms (± {std_time * 1000:.10f})")
-
+    
         return results, data_sizes
 
     def plot_results(self, results, data_sizes):
