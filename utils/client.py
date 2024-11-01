@@ -19,7 +19,7 @@ def main():
     try:
 
         # อ่าน public key ของ directory authority
-        with open('C:\\Users\\FackG\\Desktop\\practical_source\\practical_project\\keys\\public.pem', 'r') as da_file:
+        with open('keys/public.pem', 'r') as da_file:
             da_pub_key = RSA.importKey(da_file.read())  
         # เชื่อมต่อกับ directory authority
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
