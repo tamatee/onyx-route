@@ -3,6 +3,7 @@ import socket
 from Crypto.PublicKey import ECC
 
 def packHostPort(ip, port):
+    """Pack IP and port into bytes"""
     return socket.inet_aton(ip) + struct.pack("!i", port)
 
 def unpackHostPort(packed):

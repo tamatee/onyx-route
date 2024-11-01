@@ -32,22 +32,22 @@ def main():
     port_range = list(range(7000, 7010))
     ports = random.sample(port_range, num_relays + num_exits)
     relay_threads = []
-    # Start relay nodes
+     # Start relay nodes
     for port in ports[:num_relays]:
         thread = threading.Thread(target=run_node, args=(port,))
         thread.daemon = True
         thread.start()
-        relay_threads.append(thread)
         print(colored(f"Started Relay Node on port {port}...", 'green'))
-        time.sleep(1)   
+        time.sleep(1)  # Increased delay between node startups
+        
     # Start exit nodes
     for port in ports[-1 * num_exits:]:
         thread = threading.Thread(target=run_node, args=(port, True))
         thread.daemon = True
         thread.start()
-        relay_threads.append(thread)
         print(colored(f"Started Exit Node on port {port}...", 'green'))
-        time.sleep(1)   
+        time.sleep(1)  # Increased delay between node startups
+
     print(colored("\nAll nodes are running. Starting client...\n", 'yellow'))   
     try:
         # Start client

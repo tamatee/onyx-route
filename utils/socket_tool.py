@@ -2,6 +2,7 @@ import struct
 import signal
 import os
 import sys
+from termcolor import colored
 
 # Receives a message from a socket of a specified length
 def recvn(socket, length):
@@ -26,29 +27,44 @@ def recv_message_with_length_prefix(socket):
     return message
 
 def send_message_with_length_prefix(socket, message):
+    """Send a message with its length prefix"""
     try:
-        prefix = struct.pack('!I', len(message))
-        # Send prefix (4 bytes)
-        if sendn(socket, prefix) == 0:
+        # Ensure message is bytes
+        if isinstance(message, str):
+            message = message.encode('utf-8')
+            
+        # Pack message length as 4 bytes (big-endian)
+        length_prefix = struct.pack('!I', len(message))
+        
+        # Send length prefix
+        if sendn(socket, length_prefix) == 0:
+            print(colored("Failed to send length prefix", 'red'))
             return False
+            
         # Send message
         if sendn(socket, message) == 0:
+            print(colored("Failed to send message body", 'red'))
             return False
+            
         return True
-    except:
+    except Exception as e:
+        print(colored(f"Error in send_message_with_length_prefix: {e}", 'red'))
         return False
 
 def sendn(socket, message):
+    """Send exact number of bytes"""
     try:
         length = len(message)
         sent_end_index = 0
         while length > sent_end_index:
             bytes_sent = socket.send(message[sent_end_index:])
             if bytes_sent == 0:
+                print(colored("Connection closed by remote end", 'red'))
                 return 0
             sent_end_index += bytes_sent
         return length
-    except:
+    except Exception as e:
+        print(colored(f"Error in sendn: {e}", 'red'))
         return 0
 
 def signal_handler(received_signal, frame):
